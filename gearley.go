@@ -14,6 +14,8 @@ type symbol interface{
 	// isTerminal indicates if the symbol is Terminal Symbol or Non Terminal Symbol.
 	isTerminal() bool
 	String() string
+	// s and input are slices of the full state set and the full input.
+	//modifyStateSet(s []*stateSet, input []rune)
 }
 
 type grammar struct {
@@ -36,6 +38,14 @@ func (t *terminal) String() string {
 	return fmt.Sprintf("'%c'", t.value)
 }
 
+//func (t *terminal) modifyStateSet(s []*stateSet, input []rune) {
+//	fmt.Printf("%c == %c\n", input[0], t.value)
+//	if input[0] == t.value {
+//		// There is a match!
+//		s[0].putState()
+//	}
+//}
+
 type nonTerminal struct {
 	name string
 }
@@ -52,12 +62,20 @@ func (t *nonTerminal) String() string {
 	return t.name
 }
 
+//func (t *nonTerminal) modifyStateSet([]*stateSet, []rune) {
+//	// TODO
+//}
+
 type stateSet struct {
 	items []*eitem
 }
 
 func (s *stateSet) length() int {
 	return len(s.items)
+}
+
+func (s *stateSet) putState() {
+	fmt.Println("x")
 }
 
 // eitem is a single Earley item
@@ -71,45 +89,55 @@ type eitem struct {
 }
 
 func (t *eitem) String() string {
-	rightStrings := make([]string, len(t.rule.right) + 1) // +1 for dot
-	for i := 0; i < t.dot; i++ {
-		rightStrings[i] = t.rule.right[i].String()
+	rightStrings := make([]string, len(t.rule.right))
+	for i, r := range t.rule.right {
+		rightStrings[i] = r.String()
 	}
-	rightStrings[t.dot] = BLACK_CIRCLE
-	for i := t.dot; i < len(t.rule.right); i++ {
-		rightStrings[i+1] = t.rule.right[i].String()
-	}
-	return fmt.Sprintf("%v -> %v (%d)", t.rule.left.String(), strings.Join(rightStrings, " "), t.index)
+	return fmt.Sprintf("%v -> %v%v%v (%d)",
+		t.rule.left.String(),
+		strings.Join(rightStrings[0:t.dot], " "),
+		BLACK_CIRCLE,
+		strings.Join(rightStrings[t.dot:], " "),
+		t.index,
+		)
 }
 
-// isTerminal checks if the next symbol in the item is a terminal symbol
-func (t *eitem) isNextTerminal() bool {
-	r := t.rule.right
-	if t.dot >= len(r) {
-		return false
-	}
-	return r[t.dot].isTerminal()
-}
+// Produce a new item. The produced item depends if the next symbol is Terminal or Non Terminal.
+// newItem - the new item
+// offset - offset where the new item should be placed
+// ok - if the item was created
+//func (t *eitem) produceNewItem() (newItem *eitem, offset int, ok bool) {
+//	r := t.rule.right
+//	if r[t.dot].isTerminal() {
+//		// TODO produce new terminal
+//	} else {
+//		// TOOD produce from non-terminal
+//		// !! need the whole grammar to produce the new item !!
+//	}
+//}
+
+
+//// isTerminal checks if the next symbol in the item is a terminal symbol
+//func (t *eitem) isNextTerminal() bool {
+//	r := t.rule.right
+//	if t.dot >= len(r) {
+//		return false
+//	}
+//	return r[t.dot].isTerminal()
+//}
+//
+//// s - slice of the state set. The slice starts with the state NEXT after the one currently interpreted.
+//// input - slice of the input. The slice corresponds to `s`.
+//func (t *eitem) modifyStateSet(s []*stateSet, input []rune) {
+//	// TOOD edge case - out of bounds
+//	t.rule.right[t.dot].modifyStateSet(s, input)
+//}
 
 // state is the highest-level state of the parser.
 type state []*stateSet;
 
-func newStateSet(rules []*rule) *stateSet {
-	items := make([]*eitem, len(rules))
-	for i, r := range rules {
-		items[i] = &eitem{rule: r, dot: 0, index: 0}
-	}
-	return &stateSet{items: items}
-}
-
 func (s *stateSet) String() string {
 	return fmt.Sprint(s.items)
-}
-
-func initializeState(g *grammar) *state {
-	sets :=  []*stateSet{newStateSet(g.rules)}
-	s := state(sets)
-	return &s
 }
 
 type rule struct {
@@ -136,34 +164,68 @@ func Rule(t *nonTerminal, symbols ...symbol) *rule {
 }
 
 func (g *grammar) Parse(input string) {
-	s := initializeState(g)
-	s.processStateSet(0)
+	inputRunes := stringToRunes(input)
+	s := initializeState(g, inputRunes)
+	fmt.Println(input)
+	s.processStateSet(0, inputRunes)
+}
+
+func initializeState(g *grammar, runes []rune) *state {
+	sets := make([]*stateSet, len(runes) + 1)
+	for i := range sets {
+		sets[i] = newEmptyStateSet()
+	}
+	sets[0] = newStateSet(g.rules)
+	s := state(sets)
+	return &s
+}
+
+func newStateSet(rules []*rule) *stateSet {
+	items := make([]*eitem, len(rules))
+	for i, r := range rules {
+		items[i] = &eitem{rule: r, dot: 0, index: 0}
+	}
+	return &stateSet{items: items}
+}
+
+func newEmptyStateSet() *stateSet {
+	return &stateSet{items: []*eitem{}}
+}
+
+func stringToRunes(input string) []rune {
+	runes := []rune{}
+	for _, r := range input {
+		runes = append(runes, r)
+	}
+	return runes
 }
 
 // k - index of the state set to process
-func (s *state) processStateSet(k int) {
+// inputRunes - the input as runes
+func (s *state) processStateSet(k int, input []rune) {
+	fmt.Printf("==== %d ====\n", k)
 	if k >= len(*s) {
 		panic(fmt.Sprintf("out of bound: %d, len is %d", k, len(*s)))
 	}
 	set := (*s)[k]
-	// This operation mutates set, so set.length() can change in each loop.
+	// This operation mutates set, so set.length() can increase in each loop.
 	i := 0
 	for i < set.length() {
-		t := set.items[i]
-		fmt.Println(i, t)
+		item := set.items[i]
+		fmt.Println(i, item)
 		i++
-		if t.isNextTerminal() {
-			// TODO scan
-		} else {
-			// nonterminal
-			// TODO predict
-		}
+		// TODO check if is completed
+		// For terminal, if scan matches - produce new item.
+		// For non-terminal - produce new item.
+	//	if newItem, offset, ok := item.produceNewItem(); ok {
+	//	}
+		//if item.isNextTerminal() {
+		//	// Scan.
+		//	t.modifyStateSet((*s)[k+1:], input[k:])
+		//	// TODO scan
+		//} else {
+		//	// nonterminal
+		//	// TODO predict
+		//}
 	}
 }
-
-// T -> 'a' 'b'
-// T -> 'a' T 'b'
-// test on ab, aabb aaabbb
-
-// Define grammar
-// Parse input using the grammar
