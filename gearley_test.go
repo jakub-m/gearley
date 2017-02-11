@@ -4,8 +4,8 @@ import (
 )
 
 var T = NonTerminal("T")
-var A = Terminal('A')
-var B = Terminal('B')
+var A = Terminal('a')
+var B = Terminal('b')
 
 func TestAbba(t *testing.T) {
 	g := Grammar(

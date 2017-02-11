@@ -5,19 +5,51 @@ package gearley
 
 import (
     "fmt"
+    "strings"
 )
 
-type symbol interface{}
+const BLACK_CIRCLE = "\u25CF"
+
+type symbol interface{
+	// isTerminal indicates if the symbol is Terminal Symbol or Non Terminal Symbol.
+	isTerminal() bool
+	String() string
+}
 
 type grammar struct {
 	rules []*rule
 }
 
 type terminal struct {
+	value rune
+}
+
+func Terminal(r rune) *terminal {
+	return &terminal{value: r}
+}
+
+func (t *terminal) isTerminal() bool {
+	return true
+}
+
+func (t *terminal) String() string {
+	return fmt.Sprintf("'%c'", t.value)
 }
 
 type nonTerminal struct {
 	name string
+}
+
+func NonTerminal(name string) *nonTerminal {
+	return &nonTerminal{name: name}
+}
+
+func (t *nonTerminal) isTerminal() bool {
+	return false
+}
+
+func (t *nonTerminal) String() string {
+	return t.name
 }
 
 type stateSet struct {
@@ -39,21 +71,24 @@ type eitem struct {
 }
 
 func (t *eitem) String() string {
-	return fmt.Sprint(t.rule)
+	rightStrings := make([]string, len(t.rule.right) + 1) // +1 for dot
+	for i := 0; i < t.dot; i++ {
+		rightStrings[i] = t.rule.right[i].String()
+	}
+	rightStrings[t.dot] = BLACK_CIRCLE
+	for i := t.dot; i < len(t.rule.right); i++ {
+		rightStrings[i+1] = t.rule.right[i].String()
+	}
+	return fmt.Sprintf("%v -> %v (%d)", t.rule.left.String(), strings.Join(rightStrings, " "), t.index)
 }
 
 // isTerminal checks if the next symbol in the item is a terminal symbol
 func (t *eitem) isNextTerminal() bool {
 	r := t.rule.right
-	if len(r) >= t.dot {
+	if t.dot >= len(r) {
 		return false
 	}
-	switch r[t.dot].(type) {
-		case terminal:
-			return true
-		default:
-			return false
-	}
+	return r[t.dot].isTerminal()
 }
 
 // state is the highest-level state of the parser.
@@ -83,19 +118,15 @@ type rule struct {
 }
 
 func (r *rule) String() string {
-	return "rule"
+	rightStrings := make([]string, len(r.right))
+	for i, s := range r.right {
+		rightStrings[i] = s.String()
+	}
+	return fmt.Sprintf("%v -> %v", r.left.String(), strings.Join(rightStrings, " "))
 }
 
 func Grammar(rules ...*rule) *grammar {
 	return &grammar{rules: rules}
-}
-
-func Terminal(r rune) *terminal {
-	return &terminal{}
-}
-
-func NonTerminal(name string) *nonTerminal {
-	return &nonTerminal{name: name}
 }
 
 func Rule(t *nonTerminal, symbols ...symbol) *rule {
@@ -106,7 +137,6 @@ func Rule(t *nonTerminal, symbols ...symbol) *rule {
 
 func (g *grammar) Parse(input string) {
 	s := initializeState(g)
-	fmt.Println(s)
 	s.processStateSet(0)
 }
 
@@ -123,9 +153,10 @@ func (s *state) processStateSet(k int) {
 		fmt.Println(i, t)
 		i++
 		if t.isNextTerminal() {
-			// terminal symbol
+			// TODO scan
 		} else {
 			// nonterminal
+			// TODO predict
 		}
 	}
 }
