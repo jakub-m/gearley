@@ -14,6 +14,7 @@ type symbol interface{
 	// isTerminal indicates if the symbol is Terminal Symbol or Non Terminal Symbol.
 	isTerminal() bool
 	String() string
+	isMatchingTerminal(rune) bool
 	// s and input are slices of the full state set and the full input.
 	//modifyStateSet(s []*stateSet, input []rune)
 }
@@ -36,6 +37,10 @@ func (t *terminal) isTerminal() bool {
 
 func (t *terminal) String() string {
 	return fmt.Sprintf("'%c'", t.value)
+}
+
+func (t *terminal) isMatchingTerminal(r rune) bool {
+	return r == t.value
 }
 
 //func (t *terminal) modifyStateSet(s []*stateSet, input []rune) {
@@ -62,20 +67,33 @@ func (t *nonTerminal) String() string {
 	return t.name
 }
 
-//func (t *nonTerminal) modifyStateSet([]*stateSet, []rune) {
-//	// TODO
-//}
+func (t *nonTerminal) isMatchingTerminal(r rune) bool {
+	return false
+}
 
 type stateSet struct {
 	items []*eitem
+	itemSet map[eitem]bool
+}
+
+func newStateSet() *stateSet {
+	return &stateSet{
+		items: []*eitem{},
+		itemSet: make(map[eitem]bool),
+		}
 }
 
 func (s *stateSet) length() int {
 	return len(s.items)
 }
 
-func (s *stateSet) putState() {
-	fmt.Println("x")
+func (s *stateSet) putItem(item *eitem) {
+	// Add items only if they are not already in the item set
+	if _, ok := s.itemSet[*item]; ok {
+		return
+	}
+	s.itemSet[*item] = true
+	s.items = append(s.items, item)
 }
 
 // eitem is a single Earley item
@@ -100,6 +118,24 @@ func (t *eitem) String() string {
 		strings.Join(rightStrings[t.dot:], " "),
 		t.index,
 		)
+}
+
+// check if is terminal and if is matching
+func (t *eitem) isNextMatchingTerminal(nextRune rune) bool {
+	s := t.getSymbolAt(t.dot)
+	return s.isMatchingTerminal(nextRune)
+}
+
+func (t *eitem) getSymbolAt(i int) symbol {
+	return t.rule.right[i]
+}
+
+func (t *eitem) createNext() *eitem {
+	// TODO edge case when dot is last
+	return &eitem{
+		dot: t.dot + 1,
+		rule: t.rule,
+		index: t.index}
 }
 
 // Produce a new item. The produced item depends if the next symbol is Terminal or Non Terminal.
@@ -165,31 +201,51 @@ func Rule(t *nonTerminal, symbols ...symbol) *rule {
 
 func (g *grammar) Parse(input string) {
 	inputRunes := stringToRunes(input)
-	s := initializeState(g, inputRunes)
-	fmt.Println(input)
-	s.processStateSet(0, inputRunes)
+	st := initializeState(g, inputRunes)
+	// the current index in the state 'st' that is being processed - S(stateIndex)
+	stateIndex := 0
+
+	set := (*st)[stateIndex]
+	i := 0
+	for i < set.length() {
+		item := set.items[i]
+		fmt.Println(i, item)
+		i++
+
+		// TODO check completed
+		if item.isNextMatchingTerminal(inputRunes[stateIndex]) {
+			nextItem := item.createNext()
+			// create next item
+			// add it to the next stateSet
+			fmt.Println("next item", nextItem)
+			// TODO edge case when last stateIndex
+			(*st)[stateIndex+1].putItem(nextItem)
+		}
+	}
+
+	//fmt.Println(input)
+	//st.processStateSet(0, inputRunes)
+	fmt.Println(*st)
 }
 
 func initializeState(g *grammar, runes []rune) *state {
 	sets := make([]*stateSet, len(runes) + 1)
 	for i := range sets {
-		sets[i] = newEmptyStateSet()
+		sets[i] = newStateSet()
 	}
-	sets[0] = newStateSet(g.rules)
+	sets[0] = newStateSetFromRules(g.rules)
 	s := state(sets)
 	return &s
 }
 
-func newStateSet(rules []*rule) *stateSet {
+func newStateSetFromRules(rules []*rule) *stateSet {
 	items := make([]*eitem, len(rules))
 	for i, r := range rules {
 		items[i] = &eitem{rule: r, dot: 0, index: 0}
 	}
-	return &stateSet{items: items}
-}
-
-func newEmptyStateSet() *stateSet {
-	return &stateSet{items: []*eitem{}}
+	ss := newStateSet()
+	ss.items = items
+	return ss
 }
 
 func stringToRunes(input string) []rune {
