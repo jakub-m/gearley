@@ -70,6 +70,10 @@ func newStateSet() *stateSet {
 		}
 }
 
+func (s *stateSet) String() string {
+	return fmt.Sprint(s.items)
+}
+
 func (s *stateSet) length() int {
 	return len(s.items)
 }
@@ -81,6 +85,22 @@ func (s *stateSet) putItem(item *eitem) {
 	}
 	s.itemSet[*item] = true
 	s.items = append(s.items, item)
+}
+
+func (s *stateSet) findItemsToComplete(symbol nonTerminal) []*eitem {
+	candidates := []*eitem{}
+	for _, item := range s.items {
+		// Find items with the 'symbol' on the right side of the dot
+		switch c := item.rule.right[item.dot].(type) {
+			case nonTerminal:
+			    if c.name == symbol.name {
+				    candidates = append(candidates, item)
+			    }
+			default:
+			// continue
+		}
+	}
+	return candidates
 }
 
 // eitem is a single Earley item
@@ -141,10 +161,6 @@ func (st *state) getAt(i int) *stateSet {
 	return (*st)[i]
 }
 
-func (s *stateSet) String() string {
-	return fmt.Sprint(s.items)
-}
-
 type rule struct {
 	left nonTerminal
 	right []symbol
@@ -195,8 +211,18 @@ func (g *grammar) Parse(input string) {
 			fmt.Println("NOW item", item)
 
 			if item.isCompleted() {
-				fmt.Println("completed!")
-				// HERE TODO implement what if completed
+				fmt.Println("Completetion")
+				originalSet := st.getAt(item.index)
+				itemsToComplete := originalSet.findItemsToComplete(item.rule.left)
+				fmt.Println("to complete: ", itemsToComplete)
+				for _, itemToComplete := range itemsToComplete {
+					nextItem := &eitem {
+						rule: itemToComplete.rule,
+						dot: itemToComplete.dot + 1,
+						index: itemToComplete.index,
+					}
+					set.putItem(nextItem)
+				}
 				continue
 			}
 			if item.isNextMatchingTerminal(inputRunes[stateIndex]) {
@@ -213,6 +239,7 @@ func (g *grammar) Parse(input string) {
 				// TODO edge case when last stateIndex
 				nextSet := st.getAt(stateIndex+1)
 				nextSet.putItem(nextItem)
+				continue
 			}
 			if !item.getNext().isTerminal() {
 				// Predict - the next symbol is Non Terminal
@@ -227,6 +254,7 @@ func (g *grammar) Parse(input string) {
 						}
 					set.putItem(nextItem)
 				}
+				continue
 			}
 		}
 
