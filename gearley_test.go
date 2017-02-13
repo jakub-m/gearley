@@ -7,13 +7,13 @@ var T = NonTerminal("T")
 var A = Terminal('a')
 var B = Terminal('b')
 
-func Test_parse_Abba(t *testing.T) {
+func Test_parse_Aabb(t *testing.T) {
 	g := Grammar(
 	    Rule(T, A, B),	    // T -> 'a' 'b'
 	    Rule(T, A, T, B),	    // T -> 'a' T 'b'
 	)
 
-	g.Parse("abba")
+	g.Parse("aabb")
 }
 
 

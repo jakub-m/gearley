@@ -16,7 +16,6 @@ type symbol interface{
 	String() string
 	isMatchingTerminal(rune) bool
 	// s and input are slices of the full state set and the full input.
-	//modifyStateSet(s []*stateSet, input []rune)
 }
 
 type terminal struct {
@@ -127,16 +126,20 @@ func (t *eitem) getNext() symbol {
 	return t.rule.right[t.dot]
 }
 
-func (t *eitem) createNext() *eitem {
-	// TODO edge case when dot is last
-	return &eitem{
-		dot: t.dot + 1,
-		rule: t.rule,
-		index: t.index}
-}
-
 // state is the highest-level state of the parser.
 type state []*stateSet;
+
+func (st *state) String() string {
+	ss := make([]string, len(*st))
+	for i, s := range *st {
+		ss[i] = fmt.Sprint(i, " ", s)
+	}
+	return strings.Join(ss, "\n")
+}
+
+func (st *state) getAt(i int) *stateSet {
+	return (*st)[i]
+}
 
 func (s *stateSet) String() string {
 	return fmt.Sprint(s.items)
@@ -180,7 +183,7 @@ func (g *grammar) Parse(input string) {
 	stateIndex := 0
 	// outter loop
 	for stateIndex <= len(input) {
-		set := (*st)[stateIndex]
+		set := st.getAt(stateIndex)
 		fmt.Println("NOW SET S(", stateIndex, ")", set)
 		i := 0
 		// inner loop
@@ -197,18 +200,25 @@ func (g *grammar) Parse(input string) {
 				continue
 			}
 			if item.isNextMatchingTerminal(inputRunes[stateIndex]) {
-				nextItem := item.createNext()
+				// Scan - the next symbol is Terminal and matches
+				fmt.Println("Scan - terminal");
+				nextItem := &eitem{
+					rule: item.rule,
+					dot: item.dot + 1,
+					index: item.index,
+					}
 				// create next item
 				// add it to the next stateSet
 				fmt.Println("next item", nextItem)
 				// TODO edge case when last stateIndex
-				nextSet := (*st)[stateIndex+1]
+				nextSet := st.getAt(stateIndex+1)
 				nextSet.putItem(nextItem)
 			}
-			if ok := item.getNext().isTerminal(); !ok {
+			if !item.getNext().isTerminal() {
+				// Predict - the next symbol is Non Terminal
 				nextSymbol := item.getNext().(nonTerminal)
 				// Find all the rules for the symbol put those rules to the current set
-				fmt.Println("NON TERMINAL")
+				fmt.Println("Predict - NON TERMINAL")
 				for _, r := range g.getRulesForSymbol(nextSymbol) {
 					nextItem := &eitem{
 						rule: r,
@@ -220,7 +230,7 @@ func (g *grammar) Parse(input string) {
 			}
 		}
 
-		fmt.Println("S", *st, "\n")
+		fmt.Printf("S\n%v\n",st.String())
 		stateIndex++
 	}
 }
